@@ -10,8 +10,15 @@ model_sources = files(
   'src/model/game.c',
 )
 
+view_sources = files(
+  'src/view/board_view.c',
+  'src/view/app_window.c',
+)
+
 executable('solitaire',
   'src/main.c',
+  model_sources,
+  view_sources,
   dependencies : [gtk_dep],
   install : false,
 )
