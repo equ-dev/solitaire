@@ -186,7 +186,6 @@ static void
 board_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data)
 {
     (void)area;
-    (void)height;
     BoardViewData *data = (BoardViewData *)user_data;
     GameState *game = data->game;
 
@@ -255,6 +254,23 @@ board_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpoint
             double run_h = (pile->count - 1 - data->sel_card_pos) * STACK_OFFSET + CARD_H;
             draw_selection_highlight(cr, cx, row_y, CARD_W, run_h);
         }
+    }
+
+    /* Win banner, drawn on top of everything once all foundations are complete. */
+    if (game_is_won(game)) {
+        cairo_set_source_rgba(cr, 0, 0, 0, 0.55);
+        cairo_paint(cr);
+
+        const char *msg = "You Win!";
+        cairo_select_font_face(cr, "Sans", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+        cairo_set_font_size(cr, 48);
+        cairo_text_extents_t ext;
+        cairo_text_extents(cr, msg, &ext);
+        cairo_set_source_rgb(cr, 1, 1, 1);
+        cairo_move_to(cr,
+                      width / 2.0 - ext.width / 2.0 - ext.x_bearing,
+                      height / 2.0 - ext.height / 2.0 - ext.y_bearing);
+        cairo_show_text(cr, msg);
     }
 }
 
