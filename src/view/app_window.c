@@ -1,6 +1,7 @@
 #include "app_window.h"
 #include "board_view.h"
 #include "../model/game.h"
+#include "../controller/game_controller.h"
 
 #include <stdlib.h>
 #include <time.h>
@@ -25,6 +26,7 @@ app_window_new(GtkApplication *app)
 
     GtkWidget *board = board_view_new(game);
     gtk_window_set_child(GTK_WINDOW(window), board);
+    game_controller_attach(game, board);
 
     g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), game);
 

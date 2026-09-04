@@ -8,6 +8,13 @@
 #define TOP_ROW_GAP 40.0
 #define DEG (3.14159265358979323846 / 180.0)
 
+typedef struct {
+    GameState *game;
+    PileKind sel_kind;
+    int sel_index;
+    int sel_card_pos;
+} BoardViewData;
+
 static void
 rounded_rect(cairo_t *cr, double x, double y, double w, double h, double r)
 {
@@ -167,11 +174,21 @@ draw_card_face(cairo_t *cr, double x, double y, double w, double h, const Card *
 }
 
 static void
+draw_selection_highlight(cairo_t *cr, double x, double y, double w, double h)
+{
+    rounded_rect(cr, x - 3, y - 3, w + 6, h + 6, 10);
+    cairo_set_source_rgb(cr, 0.95, 0.75, 0.15);
+    cairo_set_line_width(cr, 3);
+    cairo_stroke(cr);
+}
+
+static void
 board_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data)
 {
     (void)area;
     (void)height;
-    GameState *game = (GameState *)user_data;
+    BoardViewData *data = (BoardViewData *)user_data;
+    GameState *game = data->game;
 
     /* Felt background. */
     cairo_set_source_rgb(cr, 0.06, 0.35, 0.14);
@@ -187,11 +204,11 @@ board_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpoint
     }
 
     /* Waste. */
-    x = MARGIN + CARD_W + GAP;
+    double waste_x = MARGIN + CARD_W + GAP;
     if (game->waste.count > 0) {
-        draw_card_face(cr, x, y, CARD_W, CARD_H, &game->waste.cards[game->waste.count - 1]);
+        draw_card_face(cr, waste_x, y, CARD_W, CARD_H, &game->waste.cards[game->waste.count - 1]);
     } else {
-        draw_empty_slot(cr, x, y, CARD_W, CARD_H);
+        draw_empty_slot(cr, waste_x, y, CARD_W, CARD_H);
     }
 
     /* Foundations, right-aligned. */
@@ -226,15 +243,42 @@ board_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpoint
             }
         }
     }
+
+    /* Selection highlight, drawn last so it overlays everything else. */
+    if (data->sel_kind == PILE_WASTE && game->waste.count > 0) {
+        draw_selection_highlight(cr, waste_x, MARGIN, CARD_W, CARD_H);
+    } else if (data->sel_kind == PILE_TABLEAU) {
+        Pile *pile = &game->tableau[data->sel_index];
+        if (data->sel_card_pos >= 0 && data->sel_card_pos < pile->count) {
+            double cx = MARGIN + data->sel_index * (CARD_W + GAP);
+            double row_y = tableau_y0 + data->sel_card_pos * STACK_OFFSET;
+            double run_h = (pile->count - 1 - data->sel_card_pos) * STACK_OFFSET + CARD_H;
+            draw_selection_highlight(cr, cx, row_y, CARD_W, run_h);
+        }
+    }
+}
+
+static bool
+point_in_rect(double x, double y, double rx, double ry, double rw, double rh)
+{
+    return x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
 }
 
 GtkWidget *
 board_view_new(GameState *game)
 {
+    BoardViewData *data = g_new0(BoardViewData, 1);
+    data->game = game;
+    data->sel_kind = PILE_NONE;
+    data->sel_index = -1;
+    data->sel_card_pos = -1;
+
     GtkWidget *area = gtk_drawing_area_new();
     gtk_widget_set_hexpand(area, TRUE);
     gtk_widget_set_vexpand(area, TRUE);
-    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), board_draw_func, game, NULL);
+    gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), board_draw_func, data, NULL);
+    g_object_set_data_full(G_OBJECT(area), "board-view-data", data, g_free);
+
     return area;
 }
 
@@ -242,4 +286,88 @@ void
 board_view_redraw(GtkWidget *board_view)
 {
     gtk_widget_queue_draw(board_view);
+}
+
+BoardHit
+board_view_hit_test(GtkWidget *board_view, double x, double y)
+{
+    BoardHit result = { PILE_NONE, -1, -1 };
+    BoardViewData *data = g_object_get_data(G_OBJECT(board_view), "board-view-data");
+    if (data == NULL) {
+        return result;
+    }
+    GameState *game = data->game;
+    int width = gtk_widget_get_width(board_view);
+
+    if (point_in_rect(x, y, MARGIN, MARGIN, CARD_W, CARD_H)) {
+        result.kind = PILE_STOCK;
+        return result;
+    }
+
+    double waste_x = MARGIN + CARD_W + GAP;
+    if (point_in_rect(x, y, waste_x, MARGIN, CARD_W, CARD_H)) {
+        result.kind = PILE_WASTE;
+        result.card_pos = (game->waste.count > 0) ? 0 : -1;
+        return result;
+    }
+
+    double found_total_w = NUM_FOUNDATIONS * CARD_W + (NUM_FOUNDATIONS - 1) * GAP;
+    double found_x0 = width - MARGIN - found_total_w;
+    for (int i = 0; i < NUM_FOUNDATIONS; i++) {
+        double fx = found_x0 + i * (CARD_W + GAP);
+        if (point_in_rect(x, y, fx, MARGIN, CARD_W, CARD_H)) {
+            result.kind = PILE_FOUNDATION;
+            result.index = i;
+            return result;
+        }
+    }
+
+    double tableau_y0 = MARGIN + CARD_H + TOP_ROW_GAP;
+    for (int col = 0; col < NUM_TABLEAU; col++) {
+        double cx = MARGIN + col * (CARD_W + GAP);
+        if (x < cx || x > cx + CARD_W) {
+            continue;
+        }
+        Pile *pile = &game->tableau[col];
+        if (pile->count == 0) {
+            if (point_in_rect(x, y, cx, tableau_y0, CARD_W, CARD_H)) {
+                result.kind = PILE_TABLEAU;
+                result.index = col;
+                result.card_pos = -1;
+                return result;
+            }
+            continue;
+        }
+        for (int row = pile->count - 1; row >= 0; row--) {
+            double row_y = tableau_y0 + row * STACK_OFFSET;
+            double band_h = (row == pile->count - 1) ? CARD_H : STACK_OFFSET;
+            if (y >= row_y && y <= row_y + band_h) {
+                result.kind = PILE_TABLEAU;
+                result.index = col;
+                result.card_pos = row;
+                return result;
+            }
+        }
+    }
+
+    return result;
+}
+
+void
+board_view_set_selection(GtkWidget *board_view, PileKind kind, int index, int card_pos)
+{
+    BoardViewData *data = g_object_get_data(G_OBJECT(board_view), "board-view-data");
+    if (data == NULL) {
+        return;
+    }
+    data->sel_kind = kind;
+    data->sel_index = index;
+    data->sel_card_pos = card_pos;
+    gtk_widget_queue_draw(board_view);
+}
+
+void
+board_view_clear_selection(GtkWidget *board_view)
+{
+    board_view_set_selection(board_view, PILE_NONE, -1, -1);
 }
