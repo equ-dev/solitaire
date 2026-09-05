@@ -331,5 +331,6 @@ game_controller_new_game(GtkWidget *board_view, unsigned int seed)
     game_new(ctrl->game, seed);
     clear_selection(ctrl);
     ctrl->undo_count = 0; /* a new deal isn't undoable back into the old one */
+    board_view_reset_animation(board_view);
     board_view_redraw(board_view);
 }

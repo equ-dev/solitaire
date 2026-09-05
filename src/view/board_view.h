@@ -41,4 +41,10 @@ void board_view_set_selection(GtkWidget *board_view, PileKind kind, int index, i
 /* Removes the selection highlight and queues a redraw. */
 void board_view_clear_selection(GtkWidget *board_view);
 
+/* Clears any in-progress or completed win-bounce animation and its
+ * "already won" edge-detection state. Call this when starting a new
+ * game so a lingering animation from the previous game doesn't carry
+ * over or immediately re-trigger. */
+void board_view_reset_animation(GtkWidget *board_view);
+
 #endif /* SOLITAIRE_BOARD_VIEW_H */
