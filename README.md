@@ -42,14 +42,21 @@ meson test -C build -v
 
 - **Stock pile** (top-left): click to draw a card into the waste pile.
   Clicking an empty stock recycles the waste back into the stock.
-- **Select a card**: click a waste or tableau card to select it (shown
-  with a gold outline). Click the same pile again to deselect.
+- **Select a card**: click a waste, tableau, or foundation card to
+  select it (shown with a gold outline). Click the same pile again to
+  deselect.
 - **Move a card**: with a card selected, click a legal destination pile
-  (a tableau pile or a foundation) to move it there. An illegal
-  destination simply clears the selection with no effect.
+  to move it there. Foundation cards can be selected and moved back
+  onto a tableau pile (obeying normal stacking rules: descending rank,
+  alternating color), as well as onto a foundation from waste/tableau
+  as usual. An illegal destination simply clears the selection with no
+  effect.
 - **Double-click**: double-click a waste or top tableau card to send it
   straight to its foundation, if legal.
 - **Undo**: `Ctrl+Z` undoes the last successful move.
+- **New Game**: the button in the top-right corner of the board deals
+  a fresh, freshly-shuffled game at any time, clearing the current
+  selection and undo history.
 - **Auto-complete**: once every tableau card is face up and the stock
   and waste are both empty, the rest of the game is played out
   automatically and a "You Win!" banner is shown.
