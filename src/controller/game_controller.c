@@ -105,6 +105,17 @@ try_tableau_to_foundation(Controller *ctrl, int tableau_idx)
 }
 
 static bool
+try_foundation_to_tableau(Controller *ctrl, int foundation_idx, int tableau_idx)
+{
+    GameState snap = *ctrl->game;
+    bool ok = game_foundation_to_tableau(ctrl->game, foundation_idx, tableau_idx);
+    if (ok) {
+        push_undo(ctrl, &snap);
+    }
+    return ok;
+}
+
+static bool
 try_tableau_to_tableau(Controller *ctrl, int from_idx, int card_pos, int to_idx)
 {
     GameState snap = *ctrl->game;
@@ -184,6 +195,11 @@ try_move_to(Controller *ctrl, BoardHit dest)
             try_tableau_to_foundation(ctrl, ctrl->sel_index);
         }
         break;
+    case PILE_FOUNDATION:
+        if (dest.kind == PILE_TABLEAU) {
+            try_foundation_to_tableau(ctrl, ctrl->sel_index, dest.index);
+        }
+        break;
     default:
         break;
     }
@@ -231,6 +247,8 @@ on_pressed(GtkGestureClick *gesture, int n_press, double x, double y, gpointer u
             set_selection(ctrl, PILE_WASTE, 0, -1);
         } else if (hit.kind == PILE_TABLEAU && hit.card_pos >= 0) {
             set_selection(ctrl, PILE_TABLEAU, hit.index, hit.card_pos);
+        } else if (hit.kind == PILE_FOUNDATION && ctrl->game->foundations[hit.index].count > 0) {
+            set_selection(ctrl, PILE_FOUNDATION, hit.index, -1);
         }
         board_view_redraw(ctrl->board_view);
         return;
@@ -299,4 +317,19 @@ game_controller_attach(GameState *game, GtkWidget *board_view)
     }
 
     g_signal_connect(board_view, "destroy", G_CALLBACK(on_board_destroy), ctrl);
+
+    g_object_set_data(G_OBJECT(board_view), "game-controller", ctrl);
+}
+
+void
+game_controller_new_game(GtkWidget *board_view, unsigned int seed)
+{
+    Controller *ctrl = g_object_get_data(G_OBJECT(board_view), "game-controller");
+    if (ctrl == NULL) {
+        return;
+    }
+    game_new(ctrl->game, seed);
+    clear_selection(ctrl);
+    ctrl->undo_count = 0; /* a new deal isn't undoable back into the old one */
+    board_view_redraw(board_view);
 }

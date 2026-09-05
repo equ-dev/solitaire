@@ -246,6 +246,9 @@ board_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpoint
     /* Selection highlight, drawn last so it overlays everything else. */
     if (data->sel_kind == PILE_WASTE && game->waste.count > 0) {
         draw_selection_highlight(cr, waste_x, MARGIN, CARD_W, CARD_H);
+    } else if (data->sel_kind == PILE_FOUNDATION && game->foundations[data->sel_index].count > 0) {
+        double fx = found_x0 + data->sel_index * (CARD_W + GAP);
+        draw_selection_highlight(cr, fx, MARGIN, CARD_W, CARD_H);
     } else if (data->sel_kind == PILE_TABLEAU) {
         Pile *pile = &game->tableau[data->sel_index];
         if (data->sel_card_pos >= 0 && data->sel_card_pos < pile->count) {
