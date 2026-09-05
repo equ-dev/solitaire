@@ -6,10 +6,23 @@
 
 #define WIN_ANIM_MAX_CARDS   52
 #define WIN_ANIM_GRAVITY     1400.0 /* px/s^2, downward */
-#define WIN_ANIM_RESTITUTION 0.62   /* fraction of vertical speed kept after a bounce */
+#define WIN_ANIM_RESTITUTION 0.45   /* fraction of vertical speed kept after a bounce */
 #define WIN_ANIM_FLOOR_FRICTION 0.90 /* fraction of horizontal speed kept per bounce */
-#define WIN_ANIM_SETTLE_VY   40.0   /* below this post-bounce speed (px/s), a card is settled */
+#define WIN_ANIM_SETTLE_VY   55.0   /* below this post-bounce speed (px/s), a card is settled */
 #define WIN_ANIM_SPAWN_INTERVAL_MS 90 /* time between successive card spawns */
+
+/* Physics is advanced in fixed-size substeps rather than directly with
+ * whatever dt a frame happens to report. A real display's frame times
+ * aren't perfectly uniform (compositor scheduling, other load, etc.);
+ * feeding that raw, slightly-jittery dt straight into an explicit-Euler
+ * bounce integrator makes bounce height/timing visibly inconsistent
+ * frame to frame, since a longer frame drives the card deeper into the
+ * floor before the bounce is detected, producing a harder reflected
+ * bounce than intended. Fixed substeps make the simulation's result
+ * depend only on total elapsed time, not on how that time happened to
+ * be sliced into frames. */
+#define WIN_ANIM_FIXED_DT (1.0 / 240.0)  /* seconds per physics substep */
+#define WIN_ANIM_MAX_SUBSTEPS_PER_FRAME 16 /* bounds worst case work per win_anim_step call */
 
 /* One bouncing card. Pure data; no GTK/Cairo types so this can be
  * exercised (and unit-tested) independently of the view layer. */
@@ -54,9 +67,13 @@ void win_anim_add_card(WinAnimation *anim, Card card,
 void win_anim_step_card(BounceCard *card, double dt, double floor_y);
 
 /* Advances the whole animation by dt seconds: activates newly-due cards
- * per WIN_ANIM_SPAWN_INTERVAL_MS, steps every active card's physics
- * against floor_y, and clears `running` once every added card has
- * settled. Safe to call every frame regardless of state. */
+ * per WIN_ANIM_SPAWN_INTERVAL_MS (using the raw, un-substepped dt, so
+ * spawn timing tracks real elapsed time exactly), then advances physics
+ * in fixed WIN_ANIM_FIXED_DT substeps (capped at
+ * WIN_ANIM_MAX_SUBSTEPS_PER_FRAME) so bounce behavior is independent of
+ * how dt happens to be sliced across frames. Clears `running` once
+ * every added card has settled. Safe to call every frame regardless of
+ * state. */
 void win_anim_step(WinAnimation *anim, double dt, double floor_y);
 
 /* True once every card that was added has settled (or no cards were ever

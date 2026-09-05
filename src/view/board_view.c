@@ -195,18 +195,61 @@ foundation_x(int width, int idx)
     return found_x0 + idx * (CARD_W + GAP);
 }
 
+/* Each of the 52 distinct card faces is rendered into its own small
+ * offscreen surface once, on first use, then reused for every
+ * subsequent draw of that card. draw_card_face() does a fair amount of
+ * vector path construction plus cairo_select_font_face()/cairo_show_text()
+ * (font shaping isn't free, and is a "toy" API not meant to be called
+ * repeatedly in a hot loop per Cairo's own documentation); at up to 52
+ * bouncing cards redrawn every single display frame, that adds up to
+ * real, avoidable work. A cached bitmap blit (cairo_set_source_surface +
+ * cairo_paint) is a small fraction of the cost of rebuilding all of that
+ * from scratch each frame. */
+static cairo_surface_t *card_face_cache[NUM_FOUNDATIONS][RANK_KING + 1];
+
+static cairo_surface_t *
+get_cached_card_face(const Card *card)
+{
+    cairo_surface_t **slot = &card_face_cache[card->suit][card->rank];
+    if (*slot == NULL) {
+        *slot = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)CARD_W, (int)CARD_H);
+        cairo_t *cache_cr = cairo_create(*slot);
+        draw_card_face(cache_cr, 0, 0, CARD_W, CARD_H, card);
+        cairo_destroy(cache_cr);
+    }
+    return *slot;
+}
+
+/* Draws a card face via the cache instead of rebuilding its paths/text
+ * from scratch. Only valid for CARD_W x CARD_H faces (every call site in
+ * this file uses that size; the win banner and selection highlight do
+ * not go through this path). */
+static void
+draw_card_face_cached(cairo_t *cr, double x, double y, const Card *card)
+{
+    cairo_surface_t *surface = get_cached_card_face(card);
+    cairo_save(cr);
+    cairo_translate(cr, x, y);
+    cairo_set_source_surface(cr, surface, 0, 0);
+    cairo_paint(cr);
+    cairo_restore(cr);
+}
+
 /* Draws one bouncing card, rotated about its own center. Used only by
  * the win animation; ordinary pile rendering has no rotation. */
 static void
 draw_bouncing_card(cairo_t *cr, const BounceCard *bc)
 {
+    cairo_surface_t *surface = get_cached_card_face(&bc->card);
     cairo_save(cr);
     double cx = bc->x + CARD_W / 2.0;
     double cy = bc->y + CARD_H / 2.0;
     cairo_translate(cr, cx, cy);
     cairo_rotate(cr, bc->rotation);
     cairo_translate(cr, -cx, -cy);
-    draw_card_face(cr, bc->x, bc->y, CARD_W, CARD_H, &bc->card);
+    cairo_translate(cr, bc->x, bc->y);
+    cairo_set_source_surface(cr, surface, 0, 0);
+    cairo_paint(cr);
     cairo_restore(cr);
 }
 
@@ -258,7 +301,7 @@ board_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpoint
     /* Waste. */
     double waste_x = MARGIN + CARD_W + GAP;
     if (game->waste.count > 0) {
-        draw_card_face(cr, waste_x, y, CARD_W, CARD_H, &game->waste.cards[game->waste.count - 1]);
+        draw_card_face_cached(cr, waste_x, y, &game->waste.cards[game->waste.count - 1]);
     } else {
         draw_empty_slot(cr, waste_x, y, CARD_W, CARD_H);
     }
@@ -268,7 +311,7 @@ board_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpoint
         double fx = foundation_x(width, i);
         Pile *foundation = &game->foundations[i];
         if (foundation->count > 0) {
-            draw_card_face(cr, fx, MARGIN, CARD_W, CARD_H, &foundation->cards[foundation->count - 1]);
+            draw_card_face_cached(cr, fx, MARGIN, &foundation->cards[foundation->count - 1]);
         } else {
             draw_empty_slot(cr, fx, MARGIN, CARD_W, CARD_H);
         }
@@ -287,7 +330,7 @@ board_draw_func(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpoint
             double cy = tableau_y0 + row * STACK_OFFSET;
             Card *c = &pile->cards[row];
             if (c->face_up) {
-                draw_card_face(cr, cx, cy, CARD_W, CARD_H, c);
+                draw_card_face_cached(cr, cx, cy, c);
             } else {
                 draw_card_back(cr, cx, cy, CARD_W, CARD_H);
             }

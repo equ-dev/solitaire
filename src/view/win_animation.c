@@ -65,8 +65,8 @@ win_anim_step(WinAnimation *anim, double dt, double floor_y)
         return;
     }
 
-    /* Spawn cadence: activate the next un-spawned card once enough time
-     * has accumulated, regardless of how long this particular frame was. */
+    /* Spawn cadence uses the real, un-substepped dt so a card's spawn
+     * moment tracks actual elapsed wall-clock time exactly. */
     anim->ms_since_spawn += dt * 1000.0;
     while (anim->spawned_count < anim->total_cards &&
            anim->ms_since_spawn >= WIN_ANIM_SPAWN_INTERVAL_MS) {
@@ -75,8 +75,18 @@ win_anim_step(WinAnimation *anim, double dt, double floor_y)
         anim->ms_since_spawn -= WIN_ANIM_SPAWN_INTERVAL_MS;
     }
 
-    for (int i = 0; i < anim->total_cards; i++) {
-        win_anim_step_card(&anim->cards[i], dt, floor_y);
+    /* Physics advances in fixed substeps regardless of the actual dt, so
+     * bounce behavior is deterministic given total elapsed time instead
+     * of depending on exactly how that time was sliced into frames. */
+    double remaining = dt;
+    int substeps = 0;
+    while (remaining > 0.0 && substeps < WIN_ANIM_MAX_SUBSTEPS_PER_FRAME) {
+        double step_dt = (remaining < WIN_ANIM_FIXED_DT) ? remaining : WIN_ANIM_FIXED_DT;
+        for (int i = 0; i < anim->total_cards; i++) {
+            win_anim_step_card(&anim->cards[i], step_dt, floor_y);
+        }
+        remaining -= step_dt;
+        substeps++;
     }
 
     if (win_anim_finished(anim)) {
