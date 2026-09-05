@@ -39,6 +39,12 @@ bool game_waste_to_tableau(GameState *game, int tableau_idx);
  * if legal. */
 bool game_tableau_to_foundation(GameState *game, int tableau_idx);
 
+/* Moves the top card of foundation pile `foundation_idx` (0..3, indexed
+ * by Suit) onto tableau pile `tableau_idx`, if the tableau pile accepts
+ * it under normal stacking rules (descending rank, alternating color,
+ * or onto an empty pile if the card is a King). */
+bool game_foundation_to_tableau(GameState *game, int foundation_idx, int tableau_idx);
+
 /* Moves the run of cards starting at position `card_pos` (0-based from
  * the bottom of the pile) in tableau pile `from_idx` onto tableau pile
  * `to_idx`, if the run is a legally-sequenced, face-up run and the

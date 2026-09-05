@@ -154,6 +154,28 @@ game_tableau_to_foundation(GameState *game, int tableau_idx)
     return true;
 }
 
+bool
+game_foundation_to_tableau(GameState *game, int foundation_idx, int tableau_idx)
+{
+    if (foundation_idx < 0 || foundation_idx >= NUM_FOUNDATIONS) {
+        return false;
+    }
+    if (tableau_idx < 0 || tableau_idx >= NUM_TABLEAU) {
+        return false;
+    }
+    Pile *src = &game->foundations[foundation_idx];
+    Card *top = pile_top(src);
+    if (top == NULL) {
+        return false;
+    }
+    Pile *dest = &game->tableau[tableau_idx];
+    if (!can_place_on_tableau(dest, top)) {
+        return false;
+    }
+    pile_push(dest, pile_pop(src));
+    return true;
+}
+
 /* Checks that cards[pos..count-1] form a legally-sequenced, all-face-up
  * run: strictly descending rank, alternating colors. A single card is
  * trivially a valid run. */

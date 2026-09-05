@@ -166,6 +166,80 @@ START_TEST(test_sequential_same_suit_accepted)
 }
 END_TEST
 
+/* ---------- foundation to tableau move tests ---------- */
+
+START_TEST(test_foundation_card_returns_to_valid_tableau)
+{
+    GameState game;
+    memset(&game, 0, sizeof(game));
+    game.foundations[SUIT_HEARTS].cards[0] = (Card){ .suit = SUIT_HEARTS, .rank = 6, .face_up = true };
+    game.foundations[SUIT_HEARTS].count = 1;
+    game.tableau[0].cards[0] = (Card){ .suit = SUIT_SPADES, .rank = 7, .face_up = true };
+    game.tableau[0].count = 1;
+
+    ck_assert(game_foundation_to_tableau(&game, SUIT_HEARTS, 0));
+    ck_assert_int_eq(game.foundations[SUIT_HEARTS].count, 0);
+    ck_assert_int_eq(game.tableau[0].count, 2);
+    ck_assert_int_eq(game.tableau[0].cards[1].rank, 6);
+    ck_assert_int_eq(game.tableau[0].cards[1].suit, SUIT_HEARTS);
+}
+END_TEST
+
+START_TEST(test_foundation_to_tableau_same_color_rejected)
+{
+    GameState game;
+    memset(&game, 0, sizeof(game));
+    game.foundations[SUIT_DIAMONDS].cards[0] = (Card){ .suit = SUIT_DIAMONDS, .rank = 6, .face_up = true };
+    game.foundations[SUIT_DIAMONDS].count = 1;
+    game.tableau[0].cards[0] = (Card){ .suit = SUIT_HEARTS, .rank = 7, .face_up = true };
+    game.tableau[0].count = 1;
+
+    ck_assert(!game_foundation_to_tableau(&game, SUIT_DIAMONDS, 0));
+    ck_assert_int_eq(game.foundations[SUIT_DIAMONDS].count, 1);
+    ck_assert_int_eq(game.tableau[0].count, 1);
+}
+END_TEST
+
+START_TEST(test_foundation_to_tableau_wrong_rank_rejected)
+{
+    GameState game;
+    memset(&game, 0, sizeof(game));
+    game.foundations[SUIT_HEARTS].cards[0] = (Card){ .suit = SUIT_HEARTS, .rank = 4, .face_up = true };
+    game.foundations[SUIT_HEARTS].count = 1;
+    game.tableau[0].cards[0] = (Card){ .suit = SUIT_SPADES, .rank = 7, .face_up = true };
+    game.tableau[0].count = 1;
+
+    ck_assert(!game_foundation_to_tableau(&game, SUIT_HEARTS, 0));
+}
+END_TEST
+
+START_TEST(test_foundation_to_tableau_empty_pile_accepts_only_king)
+{
+    GameState game;
+    memset(&game, 0, sizeof(game));
+    game.foundations[SUIT_HEARTS].cards[0] = (Card){ .suit = SUIT_HEARTS, .rank = 5, .face_up = true };
+    game.foundations[SUIT_HEARTS].count = 1;
+    ck_assert(!game_foundation_to_tableau(&game, SUIT_HEARTS, 0));
+
+    game.foundations[SUIT_HEARTS].cards[0] = (Card){ .suit = SUIT_HEARTS, .rank = RANK_KING, .face_up = true };
+    ck_assert(game_foundation_to_tableau(&game, SUIT_HEARTS, 0));
+    ck_assert_int_eq(game.tableau[0].count, 1);
+    ck_assert_int_eq(game.foundations[SUIT_HEARTS].count, 0);
+}
+END_TEST
+
+START_TEST(test_foundation_to_tableau_empty_foundation_rejected)
+{
+    GameState game;
+    memset(&game, 0, sizeof(game));
+    game.tableau[0].cards[0] = (Card){ .suit = SUIT_SPADES, .rank = 7, .face_up = true };
+    game.tableau[0].count = 1;
+
+    ck_assert(!game_foundation_to_tableau(&game, SUIT_HEARTS, 0));
+    ck_assert_int_eq(game.tableau[0].count, 1);
+}
+END_TEST
+
 /* ---------- tableau move tests ---------- */
 
 START_TEST(test_red_six_onto_black_seven)
@@ -296,6 +370,11 @@ game_suite(void)
     tcase_add_test(tc, test_ace_goes_to_empty_foundation);
     tcase_add_test(tc, test_two_before_ace_rejected);
     tcase_add_test(tc, test_sequential_same_suit_accepted);
+    tcase_add_test(tc, test_foundation_card_returns_to_valid_tableau);
+    tcase_add_test(tc, test_foundation_to_tableau_same_color_rejected);
+    tcase_add_test(tc, test_foundation_to_tableau_wrong_rank_rejected);
+    tcase_add_test(tc, test_foundation_to_tableau_empty_pile_accepts_only_king);
+    tcase_add_test(tc, test_foundation_to_tableau_empty_foundation_rejected);
     tcase_add_test(tc, test_red_six_onto_black_seven);
     tcase_add_test(tc, test_same_color_rejected);
     tcase_add_test(tc, test_wrong_rank_rejected);
