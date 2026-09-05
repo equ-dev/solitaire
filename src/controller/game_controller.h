@@ -21,4 +21,10 @@
  * destroyed); callers do not need to free anything. */
 void game_controller_attach(GameState *game, GtkWidget *board_view);
 
+/* Starts a fresh game: re-deals `board_view`'s GameState with `seed`,
+ * clears the current selection, and discards all undo history (a new
+ * game is not undoable back into the previous one). Redraws the board.
+ * `board_view` must have already been passed to game_controller_attach. */
+void game_controller_new_game(GtkWidget *board_view, unsigned int seed);
+
 #endif /* SOLITAIRE_GAME_CONTROLLER_H */
