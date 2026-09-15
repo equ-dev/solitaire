@@ -3,6 +3,7 @@ project('solitaire', 'c',
   default_options : ['warning_level=2', 'c_std=gnu11'])
 
 gtk_dep = dependency('gtk4')
+m_dep = meson.get_compiler('c').find_library('m')
 
 model_sources = files(
   'src/model/card.c',
@@ -31,7 +32,7 @@ executable('solitaire',
   view_sources,
   anim_sources,
   controller_sources,
-  dependencies : [gtk_dep],
+  dependencies : [gtk_dep, m_dep],
   install : false,
 )
 

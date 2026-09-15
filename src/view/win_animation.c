@@ -10,8 +10,9 @@ win_anim_reset(WinAnimation *anim)
 
 void
 win_anim_add_card(WinAnimation *anim, Card card,
-                   double origin_x, double origin_y,
-                   double vx, double vy, double vrot)
+                   double origin_x, double origin_y, double vy,
+                   double sway_amplitude, double sway_freq, double sway_phase,
+                   double fold_freq, double fold_phase)
 {
     if (anim->total_cards >= WIN_ANIM_MAX_CARDS) {
         return;
@@ -19,12 +20,18 @@ win_anim_add_card(WinAnimation *anim, Card card,
 
     BounceCard *c = &anim->cards[anim->total_cards];
     c->card = card;
+    c->origin_x = origin_x;
     c->x = origin_x;
     c->y = origin_y;
-    c->vx = vx;
     c->vy = vy;
+    c->sway_amplitude = sway_amplitude;
+    c->sway_freq = sway_freq;
+    c->sway_phase = sway_phase;
+    c->fold_freq = fold_freq;
+    c->fold_phase = fold_phase;
+    c->fold_scale = cos(fold_phase);
+    c->age = 0.0;
     c->rotation = 0.0;
-    c->vrot = vrot;
     c->active = false;
     c->settled = false;
 
@@ -39,22 +46,41 @@ win_anim_step_card(BounceCard *card, double dt, double floor_y)
         return;
     }
 
-    card->vy += WIN_ANIM_GRAVITY * dt;
+    /* Drag-limited fall: acceleration shrinks as vy approaches the
+     * GRAVITY/DRAG terminal speed instead of growing without bound, for
+     * the slow, floaty descent of a falling leaf rather than a dropped
+     * object. */
+    card->vy += (WIN_ANIM_GRAVITY - WIN_ANIM_DRAG * card->vy) * dt;
     card->y += card->vy * dt;
-    card->x += card->vx * dt;
-    card->rotation += card->vrot * dt;
+    card->age += dt;
+
+    /* Side-to-side sway: x is a pure function of elapsed active time
+     * around the spawn origin, not an integrated velocity, so the card
+     * reliably retraces the same back-and-forth drift every cycle
+     * instead of wandering. */
+    double phase = card->sway_freq * card->age + card->sway_phase;
+    card->x = card->origin_x + card->sway_amplitude * sin(phase);
+
+    /* Rotation follows the sway's instantaneous velocity (its time
+     * derivative), so the card visibly banks into each turn the way a
+     * real leaf tips as it changes lateral direction, instead of
+     * spinning freely. */
+    double sway_vel = card->sway_amplitude * card->sway_freq * cos(phase);
+    card->rotation = WIN_ANIM_ROT_COUPLING * sway_vel;
+
+    /* Front-to-back fold: a card tumbling like a real leaf doesn't just
+     * drift side to side, it also turns edge-on toward and away from the
+     * viewer. fold_scale oscillates between -1 (fully back-facing) and
+     * +1 (fully front-facing); the view layer uses its sign to pick
+     * which face to draw and its magnitude as a horizontal squish, so
+     * the card visibly narrows to an edge and widens back out each half
+     * cycle instead of only ever showing its front. */
+    card->fold_scale = cos(card->fold_freq * card->age + card->fold_phase);
 
     if (card->y >= floor_y) {
         card->y = floor_y;
-        card->vy = -card->vy * WIN_ANIM_RESTITUTION;
-        card->vx *= WIN_ANIM_FLOOR_FRICTION;
-
-        if (fabs(card->vy) < WIN_ANIM_SETTLE_VY) {
-            card->vy = 0.0;
-            card->vx = 0.0;
-            card->vrot = 0.0;
-            card->settled = true;
-        }
+        card->vy = 0.0;
+        card->settled = true;
     }
 }
 
@@ -76,7 +102,7 @@ win_anim_step(WinAnimation *anim, double dt, double floor_y)
     }
 
     /* Physics advances in fixed substeps regardless of the actual dt, so
-     * bounce behavior is deterministic given total elapsed time instead
+     * fall/sway behavior is deterministic given total elapsed time instead
      * of depending on exactly how that time was sliced into frames. */
     double remaining = dt;
     int substeps = 0;

@@ -54,4 +54,11 @@ bool game_tableau_to_tableau(GameState *game, int from_idx, int card_pos, int to
 /* True once all four foundations hold a complete King-high suit. */
 bool game_is_won(const GameState *game);
 
+/* TEMPORARY DEBUG HELPER -- not part of the game's rules API. Empties
+ * stock/waste/tableau and fills all four foundations with a complete
+ * ace-to-king run, so game_is_won() becomes true instantly. Exists only
+ * to manually exercise the win animation without playing a full game
+ * out; remove before shipping. */
+void game_debug_force_win(GameState *game);
+
 #endif /* SOLITAIRE_GAME_H */

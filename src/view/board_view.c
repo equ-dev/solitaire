@@ -1,6 +1,8 @@
 #include "board_view.h"
 #include "win_animation.h"
 
+#include <math.h>
+
 #define CARD_W 80.0
 #define CARD_H 112.0
 #define MARGIN 24.0
@@ -220,6 +222,26 @@ get_cached_card_face(const Card *card)
     return *slot;
 }
 
+/* All card backs look identical, so unlike faces this needs only one
+ * cached surface total, built lazily on first use. Without this, showing
+ * the back mid-flip for up to 52 simultaneously-falling cards would mean
+ * re-running draw_card_back()'s vector paths/strokes every single frame
+ * for every one of them -- exactly the kind of repeated work the face
+ * cache above already avoids for the front. */
+static cairo_surface_t *card_back_cache = NULL;
+
+static cairo_surface_t *
+get_cached_card_back(void)
+{
+    if (card_back_cache == NULL) {
+        card_back_cache = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int)CARD_W, (int)CARD_H);
+        cairo_t *cache_cr = cairo_create(card_back_cache);
+        draw_card_back(cache_cr, 0, 0, CARD_W, CARD_H);
+        cairo_destroy(cache_cr);
+    }
+    return card_back_cache;
+}
+
 /* Draws a card face via the cache instead of rebuilding its paths/text
  * from scratch. Only valid for CARD_W x CARD_H faces (every call site in
  * this file uses that size; the win banner and selection highlight do
@@ -235,19 +257,38 @@ draw_card_face_cached(cairo_t *cr, double x, double y, const Card *card)
     cairo_restore(cr);
 }
 
-/* Draws one bouncing card, rotated about its own center. Used only by
- * the win animation; ordinary pile rendering has no rotation. */
+/* Draws one falling card, rotated about its own center and squished
+ * horizontally by its current fold_scale to sell it turning edge-on
+ * toward/away from the viewer -- the face is shown while fold_scale is
+ * non-negative and the back once it flips past edge-on. Used only by
+ * the win animation; ordinary pile rendering has no rotation or fold. */
 static void
 draw_bouncing_card(cairo_t *cr, const BounceCard *bc)
 {
-    cairo_surface_t *surface = get_cached_card_face(&bc->card);
+    double scale_x = fabs(bc->fold_scale);
+    if (scale_x < 0.06) {
+        scale_x = 0.06; /* a literal zero-width transform is singular; this
+                          * keeps a sliver visible through the turn instead
+                          * of the card vanishing for one frame */
+    }
+    cairo_surface_t *surface = (bc->fold_scale >= 0.0) ? get_cached_card_face(&bc->card)
+                                                        : get_cached_card_back();
+
     cairo_save(cr);
     double cx = bc->x + CARD_W / 2.0;
     double cy = bc->y + CARD_H / 2.0;
     cairo_translate(cr, cx, cy);
     cairo_rotate(cr, bc->rotation);
+    cairo_scale(cr, scale_x, 1.0);
     cairo_translate(cr, -cx, -cy);
     cairo_translate(cr, bc->x, bc->y);
+    /* Software rendering (e.g. a VM without GPU passthrough) pays real
+     * per-frame cost resampling this rotated+scaled surface, up to 52
+     * times a frame while the cascade is in full swing. FAST trades a
+     * little edge smoothness for meaningfully cheaper compositing, which
+     * matters far more here than crisp edges on a card that's mid-tumble
+     * anyway. */
+    cairo_set_antialias(cr, CAIRO_ANTIALIAS_FAST);
     cairo_set_source_surface(cr, surface, 0, 0);
     cairo_paint(cr);
     cairo_restore(cr);
@@ -256,8 +297,11 @@ draw_bouncing_card(cairo_t *cr, const BounceCard *bc)
 /* Populates `anim` with all 52 foundation cards, spawning in round-robin
  * order across the four piles (one card from each in turn) so the
  * cascade fans out from all four corners at once rather than draining
- * one pile at a time. Each card gets a randomized initial "pop" velocity
- * and spin so the shower doesn't look mechanical. */
+ * one pile at a time. Each card gets a small randomized initial flutter,
+ * a randomized sway amplitude/frequency/phase, and a randomized fold
+ * frequency/phase, so the whole shower drifts down like leaves in the
+ * wind -- swaying side to side and flipping face/back -- instead of
+ * looking mechanical or moving in lockstep. */
 static void
 start_win_animation(WinAnimation *anim, GameState *game, int width)
 {
@@ -270,10 +314,15 @@ start_win_animation(WinAnimation *anim, GameState *game, int width)
             }
             double origin_x = foundation_x(width, suit);
             double origin_y = MARGIN;
-            double vx = g_random_double_range(-160.0, 160.0);
-            double vy = g_random_double_range(-420.0, -180.0); /* upward pop, gravity takes over */
-            double vrot = g_random_double_range(-4.0, 4.0);
-            win_anim_add_card(anim, pile->cards[rank], origin_x, origin_y, vx, vy, vrot);
+            double vy = g_random_double_range(-60.0, 20.0); /* gentle flutter, not a pop */
+            double sway_amplitude = g_random_double_range(40.0, 90.0);
+            double sway_freq = g_random_double_range(1.5, 3.0);
+            double sway_phase = g_random_double_range(0.0, 2.0 * G_PI);
+            double fold_freq = g_random_double_range(2.5, 5.0);
+            double fold_phase = g_random_double_range(0.0, 2.0 * G_PI);
+            win_anim_add_card(anim, pile->cards[rank], origin_x, origin_y, vy,
+                               sway_amplitude, sway_freq, sway_phase,
+                               fold_freq, fold_phase);
         }
     }
 }

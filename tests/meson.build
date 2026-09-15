@@ -12,7 +12,7 @@ test_win_animation_exe = executable('test_win_animation',
   'test_win_animation.c',
   model_sources,
   anim_sources,
-  dependencies : [check_dep],
+  dependencies : [check_dep, m_dep],
 )
 
 test('win animation physics', test_win_animation_exe)

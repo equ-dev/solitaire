@@ -239,3 +239,16 @@ game_is_won(const GameState *game)
     }
     return true;
 }
+
+void
+game_debug_force_win(GameState *game)
+{
+    memset(game, 0, sizeof(*game));
+    for (int suit = 0; suit < NUM_FOUNDATIONS; suit++) {
+        Pile *f = &game->foundations[suit];
+        for (int rank = RANK_ACE; rank <= RANK_KING; rank++) {
+            Card c = { .suit = (Suit)suit, .rank = rank, .face_up = true };
+            pile_push(f, c);
+        }
+    }
+}

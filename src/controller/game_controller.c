@@ -1,10 +1,16 @@
 #include "game_controller.h"
 #include "../view/board_view.h"
 
+#include <ctype.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define UNDO_INITIAL_CAPACITY 64
+
+/* TEMPORARY: length of the "type PPP" debug win-trigger sequence below. */
+#define DEBUG_WIN_SEQ_LEN 3
 
 typedef struct {
     GameState *game;
@@ -17,6 +23,13 @@ typedef struct {
     GameState *undo_stack;
     int undo_count;
     int undo_capacity;
+
+    /* TEMPORARY: rolling buffer of the last DEBUG_WIN_SEQ_LEN typed
+     * lowercase letters, used to detect the "ppp" debug win trigger.
+     * A plain letter sequence is used instead of a function key or
+     * modifier combo because some VM/hypervisor setups intercept
+     * function keys before they ever reach the guest. */
+    char debug_seq[DEBUG_WIN_SEQ_LEN];
 } Controller;
 
 static void
@@ -276,61 +289,8 @@ on_key_pressed(GtkEventControllerKey *controller, guint keyval, guint keycode, G
         do_undo(ctrl);
         return TRUE;
     }
-    return FALSE;
-}
-
-static void
-on_board_destroy(GtkWidget *widget, gpointer user_data)
-{
-    (void)widget;
-    Controller *ctrl = (Controller *)user_data;
-    g_free(ctrl->undo_stack);
-    free(ctrl);
-}
-
-void
-game_controller_attach(GameState *game, GtkWidget *board_view)
-{
-    Controller *ctrl = malloc(sizeof(Controller));
-    ctrl->game = game;
-    ctrl->board_view = board_view;
-    ctrl->has_selection = false;
-    ctrl->sel_kind = PILE_NONE;
-    ctrl->sel_index = -1;
-    ctrl->sel_card_pos = -1;
-    ctrl->undo_stack = NULL;
-    ctrl->undo_count = 0;
-    ctrl->undo_capacity = 0;
-
-    GtkGesture *click = gtk_gesture_click_new();
-    g_signal_connect(click, "pressed", G_CALLBACK(on_pressed), ctrl);
-    gtk_widget_add_controller(board_view, GTK_EVENT_CONTROLLER(click));
-
-    /* Ctrl+Z for undo. Attached to the window (root) with CAPTURE phase
-     * so it works regardless of which widget currently has focus. */
-    GtkRoot *root = gtk_widget_get_root(board_view);
-    if (root != NULL) {
-        GtkEventController *key_ctrl = gtk_event_controller_key_new();
-        gtk_event_controller_set_propagation_phase(key_ctrl, GTK_PHASE_CAPTURE);
-        g_signal_connect(key_ctrl, "key-pressed", G_CALLBACK(on_key_pressed), ctrl);
-        gtk_widget_add_controller(GTK_WIDGET(root), key_ctrl);
-    }
-
-    g_signal_connect(board_view, "destroy", G_CALLBACK(on_board_destroy), ctrl);
-
-    g_object_set_data(G_OBJECT(board_view), "game-controller", ctrl);
-}
-
-void
-game_controller_new_game(GtkWidget *board_view, unsigned int seed)
-{
-    Controller *ctrl = g_object_get_data(G_OBJECT(board_view), "game-controller");
-    if (ctrl == NULL) {
-        return;
-    }
-    game_new(ctrl->game, seed);
-    clear_selection(ctrl);
-    ctrl->undo_count = 0; /* a new deal isn't undoable back into the old one */
-    board_view_reset_animation(board_view);
-    board_view_redraw(board_view);
-}
+    /* TEMPORARY: F9 force-wins the game so the win animation can be
+     * exercised on demand without playing a full game out. Remove
+     * before shipping. */
+    if (keyval == GDK_KEY_F9) {
+        game_debug_force_win(ctrl->game);
